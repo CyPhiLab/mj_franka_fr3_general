@@ -145,12 +145,12 @@
   </worldbody>
 
   <actuator>
-    <general class="fr3" name="fr3_joint1" joint="fr3_joint1"/>
-    <general class="fr3" name="fr3_joint2" joint="fr3_joint2"/>
-    <general class="fr3" name="fr3_joint3" joint="fr3_joint3"/>
-    <general class="fr3" name="fr3_joint4" joint="fr3_joint4"/>
-    <general class="fr3" name="fr3_joint5" joint="fr3_joint5"/>
-    <general class="fr3" name="fr3_joint6" joint="fr3_joint6"/>
+    <motor class="fr3" name="fr3_joint1" joint="fr3_joint1"/>
+    <motor class="fr3" name="fr3_joint2" joint="fr3_joint2"/>
+    <motor class="fr3" name="fr3_joint3" joint="fr3_joint3"/>
+    <motor class="fr3" name="fr3_joint4" joint="fr3_joint4"/>
+    <motor class="fr3" name="fr3_joint5" joint="fr3_joint5"/>
+    <motor class="fr3" name="fr3_joint6" joint="fr3_joint6"/>
     <general class="fr3" name="fr3_joint7" joint="fr3_joint7"/>
   </actuator>
 
