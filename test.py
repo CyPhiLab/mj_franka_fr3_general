@@ -4,13 +4,22 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 import os
+from os.path import dirname, join, abspath
+from sys import argv
+
 from pathlib import Path
 import time
+
+import pinocchio as pin
+from pinocchio.robot_wrapper import RobotWrapper
+
 
 # Configure MuJoCo to use the EGL rendering backend (requires GPU)
 os.environ["MUJOCO_GL"] = "egl"
 
-
+pinocchio_model_dir = join(dirname(dirname(str(abspath(__file__)))), "mj_franka_fr3_general")
+ 
+robot = RobotWrapper.BuildFromURDF("fr3.urdf", package_dirs=pinocchio_model_dir)
 model = mujoco.MjModel.from_xml_path("fr3.xml")
 data = mujoco.MjData(model)
 
