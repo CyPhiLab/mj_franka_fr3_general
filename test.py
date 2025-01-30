@@ -18,8 +18,15 @@ from pinocchio.robot_wrapper import RobotWrapper
 os.environ["MUJOCO_GL"] = "egl"
 
 pinocchio_model_dir = join(dirname(dirname(str(abspath(__file__)))), "mj_franka_fr3_general")
- 
-robot = RobotWrapper.BuildFromURDF("fr3.urdf", package_dirs=pinocchio_model_dir)
+robot_URDF = pinocchio_model_dir + "/assets/urdf/fr3.urdf"
+robot = RobotWrapper.BuildFromURDF(robot_URDF, pinocchio_model_dir)
+from pinocchio.visualize import MeshcatVisualizer
+robot.setVisualizer(MeshcatVisualizer())
+robot.initViewer(open=True)
+robot.loadViewerModel()
+robot.display(robot.q0)
+print(robot.q0)
+input("Press Enter to close MeshCat and terminate... ")
 model = mujoco.MjModel.from_xml_path("fr3.xml")
 data = mujoco.MjData(model)
 
@@ -110,13 +117,96 @@ def controller(model, data):
     M = np.zeros((7,7))
     # Get mass matrix and coriolis + gravity from mujoco
     mujoco.mj_fullM(model, M, data.qM)
-    C = data.qfrc_bias
+    # C = pin.computeCoriolisMatrix(robot.model, robot.data, data.qpos, data.qvel)
+    # G = pin.computeGeneralizedGravity(robot.model, robot.data, data.qpos)
+    C, G = get_coriolis_and_gravity(model, data)
         # go to set point
     th_dd = -kp * (data.qpos - q_func(data.time)) - kd * (data.qvel - qd_func(data.time))
 
     # This controller cancels the dynamics and imposes whatever physics we want
-    tau = C + np.matmul(M, th_dd)
+    tau = C @ qd_func(data.time) + G + np.matmul(M, th_dd)
     data.ctrl[:] = tau
+
+
+def get_coriolis_and_gravity(model, data):
+    """
+    Calculate the Coriolis matrix and gravity vector for a MuJoCo model
+    
+    Parameters:
+        model: MuJoCo model object
+        data: MuJoCo data object
+    
+    Returns:
+        C: Coriolis matrix (nv x nv)
+        g: Gravity vector (nv,)
+    """
+    nv = model.nv  # number of degrees of freedom
+    
+    # Calculate gravity vector
+    g = np.zeros(nv)
+    dummy = np.zeros(7,)
+    mujoco.mj_factorM(model, data)  # Compute sparse M factorization
+    mujoco.mj_rne(model, data, 0, dummy)  # Run RNE with zero acceleration and velocity
+    g = data.qfrc_bias.copy()
+    
+    # Calculate Coriolis matrix
+    C = np.zeros((nv, nv))
+    q_vel = data.qvel.copy()
+    
+    # Compute each column of C using finite differences
+    eps = 1e-6
+    for i in range(nv):
+        # Save current state
+        vel_orig = q_vel.copy()
+        
+        # Perturb velocity
+        q_vel[i] += eps
+        data.qvel = q_vel
+        
+        # Calculate forces with perturbed velocity
+        mujoco.mj_rne(model, data, 0, dummy)
+        tau_plus = data.qfrc_bias.copy()
+        
+        # Restore original velocity
+        q_vel = vel_orig
+        data.qvel = q_vel
+        
+        # Compute column of C using finite difference
+        C[:, i] = (tau_plus - data.qfrc_bias) / eps
+    
+    return C, g
+
+def verify_dynamics(model, data, q, v):
+    """
+    Verify the computed dynamics against MuJoCo's internal computations
+    
+    Parameters:
+        model: MuJoCo model object
+        data: MuJoCo data object
+        q: Joint positions
+        v: Joint velocities
+    
+    Returns:
+        bool: True if verification passes within tolerance
+    """
+    # Set the state
+    data.qpos = q
+    data.qvel = v
+    mujoco.mj_forward(model, data)
+    
+    # Get our computed matrices
+    C, g = get_coriolis_and_gravity(model, data)
+    dummy = np.zeros(7,)
+    # Compare against MuJoCo's internal computations
+    mujoco.mj_rne(model, data, 0, dummy)
+    expected_cv = data.qfrc_bias - g
+    computed_cv = C @ v
+    
+    # Check if results match within tolerance
+    tol = 1e-5
+    return np.allclose(expected_cv, computed_cv, atol=tol, rtol=tol)
+
+print(verify_dynamics(model, data, waypoints[2,:], np.ones(7,)))
 
 mujoco.set_mjcb_control(controller)
 with mujoco.viewer.launch_passive(model, data) as viewer:
@@ -131,8 +221,6 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         # mj_step can be replaced with code that also evaluates
         # a policy and applies a control signal before stepping the physics.
         mujoco.mj_step(model, data)
-        
-
         # Pick up changes to the physics state, apply perturbations, update options from GUI.
         viewer.sync()
 
